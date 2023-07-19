@@ -1,0 +1,112 @@
+name: ChatGPT Code Review
+description: Request code review from ChatGPT
+inputs:
+  openai-api-key:
+    description: Github token
+    required: true
+  openai-model:
+    description: OpenAI model to use
+    default: gpt-3.5-turbo-16k
+    required: false
+  github-token:
+    description: Github token
+    required: true
+
+runs:
+  using: composite
+  steps:
+
+    - name: Checkout repository
+      uses: actions/checkout@v3
+      with:
+        fetch-depth: 0
+
+    - run: git --no-pager diff origin/${{ github.base_ref }}..HEAD
+      shell: bash
+
+    - name: Request to ChatGPT Server
+      shell: python
+      env:
+        OPENAI_API_KEY: ${{ inputs.openai-api-key }}
+        OPENAI_MODEL: ${{ inputs.openai-model }}
+      run: |
+        import os
+        import requests
+        import subprocess
+
+        REVIEW_PROMPT = "Review the following code changes:"
+        OPENAI_API_URL = "https://api.openai.com/v1/chat/completions"
+        OPENAI_API_KEY = os.environ["OPENAI_API_KEY"]
+        OPENAI_MODEL = os.environ["OPENAI_MODEL"]
+
+        def get_diff(base_ref="origin/${{ github.base_ref }}", diff_filter="ACDMRTUXB"):
+            arguments = [
+                "git", "--no-pager", "diff", f"--diff-filter={diff_filter}", f"{base_ref}..HEAD"
+            ]
+            diff_process = subprocess.run(arguments,
+                                          capture_output=True,
+                                          text=True)
+            diff_process.check_returncode()
+            return diff_process.stdout.strip()
+
+
+        def complete(prompt):
+            headers = {
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {OPENAI_API_KEY}"
+            }
+            instructions = """### Instructions: You are an expert code reviewer who can look at the output of git diff and provide a meaningful feedback on aspects that are good and aspects that could be improved."""
+            body = {
+                "model": OPENAI_MODEL,
+                "messages": [{"role": "system", "content": instructions}, {"role": "user", "content": prompt}],  # hard cutoff
+                "temperature": 0.7,
+            }
+            response = requests.post(OPENAI_API_URL, headers=headers, json=body)
+            response.raise_for_status()
+            completion = response.json()["choices"][0]["message"]["content"].strip()
+            return completion
+
+
+        def review_diff(diff):
+            assert diff
+            return complete("\n".join([REVIEW_PROMPT, diff]))
+
+
+        if __name__ == "__main__":
+            diff = get_diff()
+            if not diff:
+                print("Nothing to review")
+            else:
+                with open(os.environ["GITHUB_OUTPUT"], "w") as f:
+                    print("message<<EOF", file=f)
+                    print(review_diff(diff), file=f)
+                    print("EOF", file=f)
+      id: code_review
+
+    - name: Delete Previous Comment
+      uses: brtknr/delete-comment@v1
+      with:
+        github_token: "${{ inputs.github-token }}"
+        delete_user_name: "github-actions[bot]"
+        body_regex: "ChatGPT Code Review"
+        issue_number: "${{ github.event.number }}"
+
+    - name: PR comment URL
+      uses: actions/github-script@v6
+      env:
+        MESSAGE: ${{ steps.code_review.outputs.message }}
+      with:
+        github-token: ${{ inputs.github-token }}
+        script: |
+          const output = `
+          # :sparkles: ChatGPT Code Review :sparkles:
+
+          ${process.env.MESSAGE}
+          `;
+
+          github.rest.issues.createComment({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body: output
+          })
