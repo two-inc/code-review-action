@@ -16,13 +16,18 @@ runs:
   using: composite
   steps:
 
+    - name: Determine fetch depth
+      shell: bash
+      run: |
+        COMMITS=${{ github.event.pull_request.commits }}
+        echo BASE_REF="HEAD~$COMMITS" >> $GITHUB_ENV
+        echo FETCH_DEPTH=$(( COMMITS + 1 )) >> $GITHUB_ENV
+
     - name: Checkout repository
       uses: actions/checkout@v3
       with:
-        fetch-depth: 0
-
-    - run: git --no-pager diff origin/${{ github.base_ref }}..HEAD
-      shell: bash
+        ref: ${{ github.head_ref }}
+        fetch-depth: ${{ env.FETCH_DEPTH }}
 
     - name: Request to ChatGPT Server
       shell: python
@@ -38,10 +43,11 @@ runs:
         OPENAI_API_URL = "https://api.openai.com/v1/chat/completions"
         OPENAI_API_KEY = os.environ["OPENAI_API_KEY"]
         OPENAI_MODEL = os.environ["OPENAI_MODEL"]
+        BASE_REF = os.environ["BASE_REF"]
 
-        def get_diff(base_ref="origin/${{ github.base_ref }}", diff_filter="ACDMRTUXB"):
+        def get_diff():
             arguments = [
-                "git", "--no-pager", "diff", f"--diff-filter={diff_filter}", f"{base_ref}..HEAD"
+                "git", "--no-pager", "diff", f"--diff-filter=ACDMRTUXB", f"{BASE_REF}..HEAD"
             ]
             diff_process = subprocess.run(arguments,
                                           capture_output=True,
@@ -74,13 +80,15 @@ runs:
 
         if __name__ == "__main__":
             diff = get_diff()
+            print(diff)
             if not diff:
-                print("Nothing to review")
+                review = "Nothing to review."
             else:
-                with open(os.environ["GITHUB_OUTPUT"], "w") as f:
-                    print("message<<EOF", file=f)
-                    print(review_diff(diff), file=f)
-                    print("EOF", file=f)
+                review = review_diff(diff)
+            with open(os.environ["GITHUB_OUTPUT"], "w") as f:
+                print("message<<EOF", file=f)
+                print(review, file=f)
+                print("EOF", file=f)
       id: code_review
 
     - name: Delete Previous Comment
