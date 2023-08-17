@@ -33,6 +33,10 @@ runs:
         ref: ${{ github.head_ref }}
         fetch-depth: ${{ env.FETCH_DEPTH }}
 
+    - name: Install tiktoken
+      shell: bash
+      run: pip install tiktoken
+
     - name: Request to ChatGPT Server
       shell: python
       env:
@@ -43,6 +47,7 @@ runs:
         import os
         import requests
         import subprocess
+        import tiktoken
 
         REVIEW_PROMPT = "Review the following output of git diff command:"
         OPENAI_API_URL = "https://api.openai.com/v1/chat/completions"
@@ -91,7 +96,8 @@ runs:
             if not diff:
                 review = "Nothing to review."
             else:
-                if (n_tokens := len(diff.split())) < TOKEN_LIMIT:
+                enc = tiktoken.encoding_for_model(OPENAI_MODEL)
+                if (n_tokens := len(enc.encode(diff))) < TOKEN_LIMIT:
                     review = review_diff(diff)
                 else:
                     review = f"I cannot meaningfully review a diff with {n_tokens} tokens. Anything under {TOKEN_LIMIT} tokens is fine however."
