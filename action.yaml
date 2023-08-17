@@ -8,6 +8,10 @@ inputs:
     description: OpenAI model to use
     default: gpt-3.5-turbo-16k
     required: false
+  token-limit:
+    description: OpenAI model token limit
+    default: 16000
+    required: false
   github-token:
     description: Github token
     required: true
@@ -34,6 +38,7 @@ runs:
       env:
         OPENAI_API_KEY: ${{ inputs.openai-api-key }}
         OPENAI_MODEL: ${{ inputs.openai-model }}
+        TOKEN_LIMIT: ${{ inputs.token-limit }}
       run: |
         import os
         import requests
@@ -43,7 +48,9 @@ runs:
         OPENAI_API_URL = "https://api.openai.com/v1/chat/completions"
         OPENAI_API_KEY = os.environ["OPENAI_API_KEY"]
         OPENAI_MODEL = os.environ["OPENAI_MODEL"]
+        TOKEN_LIMIT = int(os.environ["TOKEN_LIMIT"])
         BASE_REF = os.environ["BASE_REF"]
+        GITHUB_OUTPUT = os.environ["GITHUB_OUTPUT"]
 
         def get_diff():
             arguments = [
@@ -84,11 +91,11 @@ runs:
             if not diff:
                 review = "Nothing to review."
             else:
-                if len(diff.split()) > 16_000:
-                    review = "Diff is too large to review."
-                else:
+                if (n_tokens := len(diff.split())) < TOKEN_LIMIT:
                     review = review_diff(diff)
-            with open(os.environ["GITHUB_OUTPUT"], "w") as f:
+                else:
+                    review = f"I cannot meaningfully review a diff with {n_tokens} tokens. Anything under {TOKEN_LIMIT} tokens is fine however."
+            with open(GITHUB_OUTPUT, "w") as f:
                 print("message<<EOF", file=f)
                 print(review, file=f)
                 print("EOF", file=f)
