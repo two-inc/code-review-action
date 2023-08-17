@@ -39,7 +39,7 @@ runs:
         import requests
         import subprocess
 
-        REVIEW_PROMPT = "Review the following code changes:"
+        REVIEW_PROMPT = "Review the following output of git diff command:"
         OPENAI_API_URL = "https://api.openai.com/v1/chat/completions"
         OPENAI_API_KEY = os.environ["OPENAI_API_KEY"]
         OPENAI_MODEL = os.environ["OPENAI_MODEL"]
@@ -61,7 +61,7 @@ runs:
                 "Content-Type": "application/json",
                 "Authorization": f"Bearer {OPENAI_API_KEY}"
             }
-            instructions = """### Instructions: You are an expert code reviewer who can look at the output of git diff and provide a meaningful feedback on aspects that are good and aspects that could be improved."""
+            instructions = """### Instructions: You are an expert code reviewer who can look at the output of git diff command and provide feedback on aspects that are good and aspects that could be improved."""
             body = {
                 "model": OPENAI_MODEL,
                 "messages": [{"role": "system", "content": instructions}, {"role": "user", "content": prompt}],  # hard cutoff
@@ -84,7 +84,10 @@ runs:
             if not diff:
                 review = "Nothing to review."
             else:
-                review = review_diff(diff)
+                if len(diff.split()) > 16_000:
+                    review = "Diff is too large to review."
+                else:
+                    review = review_diff(diff)
             with open(os.environ["GITHUB_OUTPUT"], "w") as f:
                 print("message<<EOF", file=f)
                 print(review, file=f)
