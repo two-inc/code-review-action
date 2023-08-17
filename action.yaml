@@ -49,7 +49,15 @@ runs:
         import subprocess
         import tiktoken
 
-        REVIEW_PROMPT = "Review the following output of git diff command:"
+        INSTRUCTIONS = """You are an expert code reviewer who upon receiving
+        the output of git diff command can automatically infer the programming
+        language and provide meaningful feedback on aspect of code changes that
+        are good and aspects that could be improved with example suggested code
+        improvements encapsulated in markdown code blocks where appropriate.
+        Pay special attention to distinguish between lines that are additions
+        and deletions focus on reviewing those, not the untouched code. Mention
+        the filename and the line number range if appropriate for each section
+        of code that you review."""
         OPENAI_API_URL = "https://api.openai.com/v1/chat/completions"
         OPENAI_API_KEY = os.environ["OPENAI_API_KEY"]
         OPENAI_MODEL = os.environ["OPENAI_MODEL"]
@@ -73,10 +81,9 @@ runs:
                 "Content-Type": "application/json",
                 "Authorization": f"Bearer {OPENAI_API_KEY}"
             }
-            instructions = """### Instructions: You are an expert code reviewer who can look at the output of git diff command and provide feedback on aspects that are good and aspects that could be improved."""
             body = {
                 "model": OPENAI_MODEL,
-                "messages": [{"role": "system", "content": instructions}, {"role": "user", "content": prompt}],  # hard cutoff
+                "messages": [{"role": "system", "content": INSTRUCTIONS}, {"role": "user", "content": prompt}],  # hard cutoff
                 "temperature": 0.7,
             }
             response = requests.post(OPENAI_API_URL, headers=headers, json=body)
@@ -86,8 +93,7 @@ runs:
 
 
         def review_diff(diff):
-            assert diff
-            return complete("\n".join([REVIEW_PROMPT, diff]))
+            return complete(diff)
 
 
         if __name__ == "__main__":
